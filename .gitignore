@@ -1,0 +1,5 @@
+*.osm.pbf
+*.msgpack
+*.kmz
+*.kml
+__pycache__/
