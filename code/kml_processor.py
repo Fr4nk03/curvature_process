@@ -1,87 +1,4 @@
-# # import zipfile
-# # from pykml import parser
-# from shapely.geometry import Point, LineString
-# from extract import read_kml
-# import pandas as pd
-# from datetime import datetime
-
-# # 1. Setup your Radius Mapping (based on our previous decode)
-# RADIUS_MAP = {
-#     "#lineStyle0": "> 175m (Straight/Broad)",
-#     "#lineStyle1": "100m - 175m (Broad)",
-#     "#lineStyle2": "60m - 100m (Moderate)",
-#     "#lineStyle3": "25m - 60m (Tight)",
-#     "#lineStyle4": "< 25m (Very Sharp)",
-# }
-
-# def get_curvature_at_coord(kml_root, car_lat, car_lon):
-#     car_point = Point(car_lon, car_lat)
-#     closest_segment = None
-#     min_dist = float('inf')
-
-#     # Find all Placemarks, even those nested in sub-folders
-#     # .xpath covers the whole document for any 'Placemark' element
-#     all_placemarks = kml_root.xpath('//kml:Placemark', namespaces={'kml': 'http://www.opengis.net/kml/2.2'})
-
-#     for pm in all_placemarks:
-#         if not hasattr(pm, 'LineString'):
-#             continue
-            
-#         coords_str = str(pm.LineString.coordinates).strip()
-#         # Ensure we handle the coordinates correctly
-#         coords = [tuple(map(float, c.split(',')[:2])) for c in coords_str.split()]
-        
-#         if len(coords) < 2: continue
-        
-#         road_line = LineString(coords)
-#         dist = road_line.distance(car_point)
-
-#         if dist < min_dist:
-#             min_dist = dist
-#             closest_segment = pm
-
-
-#     # 0.001 degrees is roughly 111 meters. 
-#     # 0.0005 is roughly 55 meters.
-#     if closest_segment is not None and min_dist < 0.001: 
-#         style = str(closest_segment.styleUrl).strip()
-#         radius = RADIUS_MAP.get(style, f"Unknown Style ({style})")
-#         return radius, style, min_dist
-#     else:
-#         return "No road found nearby", None, min_dist
-
-# def process_gps_csv(csv_filename, kml_root):
-#     start_time = datetime.now()
-#     gps_df = pd.read_csv(csv_filename, header=None, names=['timestamp', 'latitude', 'longitude'])
-
-#     for index, row in gps_df.iterrows():
-#         car_lat = row['latitude']
-#         car_lon = row['longitude']
-
-#         radius, style, d = get_curvature_at_coord(root, car_lat, car_lon)
-#         print(f"At {row['timestamp']} and ({car_lat}, {car_lon}): Curvature is {radius}")
-#     end_time = datetime.now()
-#     print(f"Processed {len(gps_df)} GPS points in {end_time - start_time} seconds.")
-
-# # --- USAGE ---
-# # car_lat, car_lon = 46.4659, -67.6663
-# car_lat, car_lon = 46.0900, -67.5704    # Highway 2
-# # car_lat, car_lon = 46.089307, -67.570189
-# # car_lat, car_lon = 46.0996, -67.5903    # Highway 2 ramp
-# car_lat, car_lon = 45.9510, -66.6885
-
-
-# kml_filename = '../data/new_brunswick.curves.kml'
-# root = read_kml(kml_filename)
-# # radius, style, d = get_curvature_at_coord(root, car_lat, car_lon)
-# # print(f"At {car_lat}, {car_lon}: Curvature is {radius}")
-
-# process_gps_csv('../../ramp_gps.csv', root)
-
-
-
-
-## OPTIMIZED
+## OPTIMIZED for kml file
 from shapely.geometry import Point, LineString
 from shapely.strtree import STRtree
 from extract import read_kml
@@ -188,8 +105,12 @@ def process_gps_csv(csv_filename, kml_filename):
     print(f"Processed {len(gps_df)} points in {end_time - start_time} seconds.")
     
     # Save the result
-    gps_df.to_csv('../output/processed_gps_output.csv', index=False)
+    output_csv_directory = '../output/' + csv_directory.split('/')[-1].replace('.csv', '_curvature.csv')
+    gps_df.to_csv(output_csv_directory, index=False)
     return gps_df
 
 # --- RUN ---
-process_gps_csv('../../ramp_gps.csv', '../data/new_brunswick.curves.kml')
+# csv_directory = '../data/csv/ramp_gps.csv'
+csv_directory = '../data/csv/20F_gps.csv'
+kml_directory = '../data/new_brunswick_raw.curves.kml'
+process_gps_csv(csv_directory, kml_directory)

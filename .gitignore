@@ -2,4 +2,9 @@
 *.msgpack
 *.kmz
 *.kml
+*.csv
+*.txt
+*.log
+*.mp4
+*.jpg
 __pycache__/
