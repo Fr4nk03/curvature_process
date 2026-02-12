@@ -2,8 +2,8 @@
 *.msgpack
 *.kmz
 *.kml
-*.csv
 *.txt
+*.csv
 *.log
 *.mp4
 *.jpg
