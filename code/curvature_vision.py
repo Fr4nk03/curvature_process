@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from curvature_gps import build_spatial_index, get_curvature_from_map
 from shapely.geometry import Point
+from tool.SMA import SMA
 
 # --- Helper method --- #
 def get_curvature(lane_points, ym_per_pixel, xm_per_pixel, upper=False):
@@ -41,6 +42,9 @@ def get_gps(gps_df, original_start_time, current_frame, input_fps):
         print("No GPS data available for this frame.")
         return None, None
 
+# SMA filter for curvature smoothing
+upper_sma_filter = SMA(window_size=5)
+lower_sma_filter = SMA(window_size=5)
 
 # --- Build spatial index for GPS-based curvature data --- #
 msgpack_directory = '../data/new_brunswick_raw_radius.msgpack'
@@ -53,11 +57,11 @@ print(f"STRtree built with {len(segments_geoms)} road segments in {time_taken:.2
 str_query_time = []
 
 # video_directory = '../../videos/NO20251004-095008-000013F.mp4'
-# video_directory = '../../videos/33F_curve_1_4K.mp4'
-# original_start_time = 76
+video_directory = '../../videos/33F_curve_1_4K.mp4'
+original_start_time = 76
 
-video_directory = '../../videos/33F_curve_2_4K.mp4'
-original_start_time = 155
+# video_directory = '../../videos/33F_curve_2_4K.mp4'
+# original_start_time = 155
 section = video_directory.split('/')[-1].split('.')[0]
 # video_directory = '../../videos/23F_straight_1_4K.mp4'
 
@@ -269,15 +273,17 @@ while success:
         left_curvature = get_curvature(left_lower, ym_per_pixel, xm_per_pixel, upper=False)
         right_curvature = get_curvature(right_lower, ym_per_pixel, xm_per_pixel)
         curvature = (left_curvature + right_curvature) / 2
-        if curvature >= 10000:
-            cv2.putText(output_frame, f"Current Curvature: {int(curvature)} m > 10000m (Straight/Broad)", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (165, 86, 5), 2)
+        smoothed_curvature = lower_sma_filter.update(curvature)
+        if smoothed_curvature >= 10000:
+            cv2.putText(output_frame, f"Current Curvature: {int(smoothed_curvature)} m > 10000m (Straight/Broad)", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (165, 86, 5), 2)
         else:
-            cv2.putText(output_frame, f"Current Curvature: {int(curvature)} m", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (5, 95, 255), 2)
+            cv2.putText(output_frame, f"Current Curvature: {int(smoothed_curvature)} m", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (5, 95, 255), 2)
     else:
         # Use GPS Data
         current_time = time.time()
         latitude, longitude = get_gps(gps_df, original_start_time, frame_cnt, input_fps)
         seg_data = get_curvature_from_map(Point(longitude, latitude), spatial_tree, segment_data_list)
+        smoothed_seg_data = lower_sma_filter.update(seg_data['radius']) if seg_data else None
         str_query_time.append(time.time() - current_time)
         # print(seg_data)
         cv2.putText(output_frame, f"Lane cannot be detected! Using GPS Data: {seg_data['radius']} m", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
@@ -287,17 +293,19 @@ while success:
         left_upper_curvature = get_curvature(left_upper, ym_per_pixel, xm_per_pixel, upper=True)
         right_upper_curvature = get_curvature(right_upper, ym_per_pixel, xm_per_pixel, upper=True)
         upper_curvature = (left_upper_curvature + right_upper_curvature) / 2
-        if upper_curvature >= 10000:
-            cv2.putText(output_frame, f"Curvature up front: {int(upper_curvature)} m > 10000m (Straight/Broad)", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (165, 86, 5), 2)
+        smoothed_upper_curvature = upper_sma_filter.update(upper_curvature)
+        if smoothed_upper_curvature >= 10000:
+            cv2.putText(output_frame, f"Curvature up front: {int(smoothed_upper_curvature)} m > 10000m (Straight/Broad)", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (165, 86, 5), 2)
         else:
-            cv2.putText(output_frame, f"Curvature up front: {int(upper_curvature)} m", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (5, 95, 255), 2)
+            cv2.putText(output_frame, f"Curvature up front: {int(smoothed_upper_curvature)} m", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (5, 95, 255), 2)
     else:
         current_time = time.time()
         latitude, longitude = get_gps(gps_df, original_start_time, frame_cnt, input_fps)
-        seg_data = get_curvature_from_map(Point(longitude, latitude), spatial_tree, segment_data_list)
+        upper_seg_data = get_curvature_from_map(Point(longitude, latitude), spatial_tree, segment_data_list)
+        smoothed_upper_seg_data = upper_sma_filter.update(upper_seg_data['radius']) if upper_seg_data else None
         str_query_time.append(time.time() - current_time)
         # print(seg_data)
-        cv2.putText(output_frame, f"Lane up front cannot be detected! Using GPS Data: {seg_data['radius']} m", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(output_frame, f"Lane up front cannot be detected! Using GPS Data: {upper_seg_data['radius']} m", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     # Calculate the curvature
     # y_eval = 800
@@ -313,8 +321,8 @@ while success:
     combined = np.hstack((output_frame, combined_binary_bgr))
     out.write(combined)
 
-    if frame_cnt == 0:
-        cv2.imwrite("../../output_image/bev_poor_road_condition.jpg", combined)
+    # if frame_cnt == 0:
+    #     cv2.imwrite("../../output_image/bev_poor_road_condition.jpg", combined)
 
     frame_cnt += 1
     if frame_cnt == 100:
